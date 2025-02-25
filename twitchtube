@@ -1,0 +1,212 @@
+import os
+import requests
+import yt_dlp
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+import google_auth_oauthlib.flow
+
+# --------------------------
+# Twitch API Functions
+# --------------------------
+
+def get_twitch_oauth_token(client_id, client_secret):
+    """
+    Obtain a Twitch OAuth token using your client credentials.
+    """
+    url = "https://id.twitch.tv/oauth2/token"
+    params = {
+        'client_id': client_id,
+        'client_secret': client_secret,
+        'grant_type': 'client_credentials'
+    }
+    response = requests.post(url, params=params)
+    response.raise_for_status()
+    return response.json()['access_token']
+
+def get_twitch_videos(oauth_token, client_id, user_id, max_results=5):
+    """
+    Retrieve a list of videos from your Twitch account.
+    """
+    url = "https://api.twitch.tv/helix/videos"
+    headers = {
+        'Client-ID': client_id,
+        'Authorization': f'Bearer {oauth_token}'
+    }
+    params = {
+        'user_id': user_id,
+        'first': max_results
+    }
+    response = requests.get(url, headers=headers, params=params)
+    response.raise_for_status()
+    return response.json()['data']
+
+# --------------------------
+# Download with yt-dlp
+# --------------------------
+
+def download_video(video_url, output_filename):
+    """
+    Download a video from Twitch using yt-dlp.
+    """
+    ydl_opts = {
+        'outtmpl': output_filename,
+        'quiet': False,
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([video_url])
+
+# --------------------------
+# YouTube API Functions
+# --------------------------
+
+def get_authenticated_youtube():
+    """
+    Authenticate and build the YouTube API client.
+    Requires a client_secrets.json file with your OAuth 2.0 credentials.
+    """
+    scopes = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube"]
+    flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
+        "client_secrets.json", scopes)
+    credentials = flow.run_console()
+    youtube = build("youtube", "v3", credentials=credentials)
+    return youtube
+
+def upload_video_to_youtube(youtube, video_file, title, description):
+    """
+    Upload a video file to YouTube with a private status.
+    Returns the uploaded video's YouTube video ID.
+    """
+    body = {
+        'snippet': {
+            'title': title,
+            'description': description,
+            'tags': ['Twitch', 'Copied Video'],
+            'categoryId': '22'  # People & Blogs; adjust as needed.
+        },
+        'status': {
+            'privacyStatus': 'private'
+        }
+    }
+    media = MediaFileUpload(video_file, chunksize=-1, resumable=True)
+    request = youtube.videos().insert(
+        part="snippet,status",
+        body=body,
+        media_body=media
+    )
+    print(f"Uploading '{title}' to YouTube...")
+    response = None
+    while response is None:
+        status, response = request.next_chunk()
+        if status:
+            print(f"Upload progress: {int(status.progress() * 100)}%")
+    print("Upload Complete!")
+    return response['id']
+
+def get_or_create_playlist(youtube, playlist_title, playlist_description, privacy_status='private'):
+    """
+    Check for an existing playlist with the given title. If not found, create it.
+    Returns the playlist ID.
+    """
+    # List existing playlists for the channel.
+    request = youtube.playlists().list(part="snippet,status", mine=True, maxResults=50)
+    response = request.execute()
+    playlists = response.get('items', [])
+    for playlist in playlists:
+        if playlist['snippet']['title'] == playlist_title:
+            print(f"Found existing playlist: {playlist_title}")
+            return playlist['id']
+    
+    # Create a new playlist if none exists.
+    print(f"Creating new playlist: {playlist_title}")
+    body = {
+        'snippet': {
+            'title': playlist_title,
+            'description': playlist_description
+        },
+        'status': {
+            'privacyStatus': privacy_status
+        }
+    }
+    request = youtube.playlists().insert(part="snippet,status", body=body)
+    response = request.execute()
+    return response['id']
+
+def add_video_to_playlist(youtube, playlist_id, video_id):
+    """
+    Add the given YouTube video to the specified playlist.
+    """
+    body = {
+        'snippet': {
+            'playlistId': playlist_id,
+            'resourceId': {
+                'kind': 'youtube#video',
+                'videoId': video_id
+            }
+        }
+    }
+    request = youtube.playlistItems().insert(part="snippet", body=body)
+    response = request.execute()
+    print(f"Added video {video_id} to playlist {playlist_id}")
+    return response
+
+# --------------------------
+# Main Function
+# --------------------------
+
+def main():
+    # --- Twitch Credentials and Settings ---
+    twitch_client_id = 'your_twitch_client_id'
+    twitch_client_secret = 'your_twitch_client_secret'
+    twitch_user_id = 'your_twitch_user_id'  # Numeric user ID.
+    max_results = 5  # Number of videos to process (adjust as needed)
+
+    # --- Get Twitch OAuth token and fetch videos ---
+    print("Obtaining Twitch OAuth token...")
+    oauth_token = get_twitch_oauth_token(twitch_client_id, twitch_client_secret)
+    print("Fetching videos from Twitch...")
+    videos = get_twitch_videos(oauth_token, twitch_client_id, twitch_user_id, max_results)
+
+    if not videos:
+        print("No videos found on your Twitch account.")
+        return
+
+    # --- Authenticate YouTube ---
+    print("Authenticating with YouTube...")
+    youtube = get_authenticated_youtube()
+
+    # --- Process each video ---
+    for video in videos:
+        video_url = video['url']
+        twitch_video_id = video['id']
+        title = video.get('title', f"Twitch Video {twitch_video_id}")
+        description = video.get('description', '')
+        
+        # Use the collection field from Twitch if available; otherwise, use a default.
+        collection = video.get('collection', 'Default Collection')
+        # Get or create the YouTube playlist for this collection.
+        playlist_id = get_or_create_playlist(
+            youtube,
+            playlist_title=collection,
+            playlist_description=f"Playlist for Twitch collection: {collection}",
+            privacy_status='private'
+        )
+
+        output_file = f"{twitch_video_id}.mp4"
+
+        print(f"\nProcessing video: {title}")
+        print("Downloading video from Twitch...")
+        download_video(video_url, output_file)
+
+        print("Uploading video to YouTube...")
+        youtube_video_id = upload_video_to_youtube(youtube, output_file, title, description)
+
+        print("Adding video to playlist...")
+        add_video_to_playlist(youtube, playlist_id, youtube_video_id)
+
+        # Optionally, remove the downloaded file after uploading
+        if os.path.exists(output_file):
+            os.remove(output_file)
+            print(f"Removed local file {output_file}")
+
+if __name__ == "__main__":
+    main()
