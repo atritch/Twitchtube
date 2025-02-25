@@ -5,9 +5,13 @@ import yt_dlp
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 import google_auth_oauthlib.flow
+from dotenv import load_dotenv
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Load environment variables
+load_dotenv()
 
 # Path to the log file
 PROCESSED_VIDEOS_LOG = "processed_videos.log"
@@ -96,7 +100,7 @@ def download_video(video_url, output_filename):
 # YouTube API Functions
 # --------------------------
 
-def get_authenticated_youtube():
+def get_authenticated_youtube(client_secrets_file):
     """
     Authenticate and build the YouTube API client.
     Requires a client_secrets.json file with your OAuth 2.0 credentials.
@@ -104,7 +108,7 @@ def get_authenticated_youtube():
     scopes = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube"]
     try:
         flow = google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file(
-            "client_secrets.json", scopes)
+            client_secrets_file, scopes)
         credentials = flow.run_console()
         youtube = build("youtube", "v3", credentials=credentials)
         logging.info("Successfully authenticated with YouTube.")
@@ -219,9 +223,9 @@ def save_processed_video(video_id):
 
 def main():
     # --- Twitch Credentials and Settings ---
-    twitch_client_id = 'your_twitch_client_id'
-    twitch_client_secret = 'your_twitch_client_secret'
-    twitch_user_id = 'your_twitch_user_id'  # Numeric user ID.
+    twitch_client_id = os.getenv('TWITCH_CLIENT_ID')
+    twitch_client_secret = os.getenv('TWITCH_CLIENT_SECRET')
+    twitch_user_id = os.getenv('TWITCH_USER_ID')  # Numeric user ID.
     max_results = 5  # Number of videos to process (adjust as needed)
 
     try:
@@ -240,7 +244,7 @@ def main():
 
         # --- Authenticate YouTube ---
         logging.info("Authenticating with YouTube...")
-        youtube = get_authenticated_youtube()
+        youtube = get_authenticated_youtube(os.getenv('YOUTUBE_CLIENT_SECRETS'))
 
         # --- Process each video ---
         for video in videos:
