@@ -43,9 +43,9 @@ def get_twitch_oauth_token(client_id, client_secret):
         logging.error(f"Failed to obtain Twitch OAuth token: {e}")
         raise
 
-def get_twitch_videos(oauth_token, client_id, user_id, max_results=5):
+def get_twitch_videos(oauth_token, client_id, user_id, max_results=5, period="all", sort="time"):
     """
-    Retrieve a list of videos from your Twitch account, handling pagination.
+    Retrieve a list of videos from your Twitch account, handling pagination and optional sorting.
     """
     url = "https://api.twitch.tv/helix/videos"
     headers = {
@@ -54,7 +54,9 @@ def get_twitch_videos(oauth_token, client_id, user_id, max_results=5):
     }
     params = {
         'user_id': user_id,
-        'first': min(max_results, 100)  # Twitch API allows a max of 100 per request
+        'first': min(max_results, 100),  # Twitch API allows a max of 100 per request
+        'period': period,  # Options: "all", "day", "week", "month"
+        'sort': sort  # Options: "time", "trending"
     }
     all_videos = []
     logging.info(f"Fetching videos with headers: {headers} and params: {params}")
@@ -168,8 +170,7 @@ def upload_video_to_youtube(youtube, video_file, twitch_video):
         request = youtube.videos().insert(
             part="snippet,status",
             body=body,
-            media_body=media,
-            onBehalfOfContentOwnerChannel='YOUR_CHANNEL_ID'
+            media_body=media
         )
         logging.info(f"Uploading '{title}' to YouTube...")
         response = None
@@ -258,7 +259,9 @@ def main():
     twitch_client_id = os.getenv('TWITCH_CLIENT_ID')
     twitch_client_secret = os.getenv('TWITCH_CLIENT_SECRET')
     twitch_user_id = os.getenv('TWITCH_USER_ID')  # Numeric user ID.
-    max_results = 5  # Number of videos to process (adjust as needed)
+    max_results = int(os.getenv('MAX_RESULTS', 5))  # Number of videos to process (adjust as needed)
+    period = os.getenv('TWIITCH_VIDEO_PERIOD', 'all')  # Options: "all", "day", "week", "month"
+    sort = os.getenv('TWIITCH_VIDEO_SORT', 'time')  # Options: "time", "trending"
 
     # --- YouTube Credentials ---
     client_secrets_file = 'client_secrets.json'
@@ -283,7 +286,7 @@ def main():
         logging.info("Obtaining Twitch OAuth token...")
         oauth_token = get_twitch_oauth_token(twitch_client_id, twitch_client_secret)
         logging.info("Fetching videos from Twitch...")
-        videos = get_twitch_videos(oauth_token, twitch_client_id, twitch_user_id, max_results)
+        videos = get_twitch_videos(oauth_token, twitch_client_id, twitch_user_id, max_results, period, sort)
 
         if not videos:
             logging.warning("No videos found on your Twitch account.")
