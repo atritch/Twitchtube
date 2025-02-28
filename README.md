@@ -8,6 +8,7 @@ Twitchtube is a tool that automates the process of downloading videos from Twitc
 - **Download Videos**: Use `yt-dlp` to download videos locally.
 - **Upload to YouTube**: Authenticate with YouTube and upload videos.
 - **Manage Playlists**: Automatically create or update playlists on YouTube based on Twitch collections.
+- **Enhanced Metadata Processing**: Automatically copy metadata such as title and description from Twitch videos to YouTube uploads.
 
 ## Prerequisites
 
@@ -38,10 +39,19 @@ Twitchtube is a tool that automates the process of downloading videos from Twitc
    - Enable the YouTube Data API v3.
    - Download the `client_secrets.json` file and place it in the project root.
 
+5. **Environment Variables**:
+   - Create a `.env` file in the project root with your credentials:
+     ```plaintext
+     TWITCH_CLIENT_ID=your_twitch_client_id
+     TWITCH_CLIENT_SECRET=your_twitch_client_secret
+     TWITCH_USER_ID=your_twitch_user_id
+     YOUTUBE_CLIENT_SECRETS=client_secrets.json
+     ```
+
 ## Usage
 
 1. **Configure Your Credentials**:
-   - Update the `main()` function in `twitchtube.py` with your Twitch `client_id`, `client_secret`, and `user_id`.
+   - Ensure your `.env` file is correctly set up with your Twitch and YouTube credentials.
 
 2. **Run the Script**:
    ```bash
@@ -50,7 +60,7 @@ Twitchtube is a tool that automates the process of downloading videos from Twitc
 
 3. **Follow the Console Prompts**:
    - Authenticate with YouTube when prompted.
-   - The script will download videos from Twitch and upload them to YouTube, organizing them into playlists.
+   - The script will download videos from Twitch and upload them to YouTube, organizing them into playlists and copying over metadata.
 
 ## Notes
 
